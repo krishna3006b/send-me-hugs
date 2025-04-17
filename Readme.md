@@ -161,3 +161,5 @@ The project is organized into two main folders:
 
 This project is licensed under the ISC License.
 
+
+## Version 1.0.0 - Production Ready
