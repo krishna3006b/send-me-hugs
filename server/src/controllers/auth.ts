@@ -8,8 +8,7 @@ import { z } from 'zod';
 const jwtSecret = process.env.JWT_SECRET ?? 'sendMeHugs';
 
 const handleZodErrors = (error: z.ZodError) => {
-    // return Object.values(error.format()).flat().map((err: any) => err.message).join(', ');
-    return error.errors;
+    return error.errors.map((err) => err.message).join(', ');
 };
 
 export const signup = async (req: Request, res: Response) => {
@@ -45,7 +44,7 @@ export const signup = async (req: Request, res: Response) => {
 
         try {
             await user.save();
-            user = await User.findOne({ email }).select(['-_id', '-__v', '-password']).exec()
+            user = await User.findOne({ email }).select(['-password', '-__v']).exec();
             res.status(201).json({ success: true, message: "User created successfully", user });
         } catch (saveError) {
             res.status(500).json({ success: false, message: "Signup Failed", error: saveError instanceof Error ? saveError.message : 'Internal Error' });
@@ -81,7 +80,7 @@ export const login = async (req: Request, res: Response) => {
         user.token = token;
 
         await user.save();
-        user = await User.findOne({ email }).select(['-_id', '-__v', '-password']).exec()
+        user = await User.findOne({ email }).select(['-password', '-__v']).exec();
         res.status(200).json({ success: true, message: "User logged in successfully", user });
     } catch (error) {
         res.status(500).json({ success: false, message: 'Failed to Login', error: error instanceof Error ? error.message : 'Internal Error' });
@@ -108,7 +107,7 @@ export const googleLogin = async (req: Request, res: Response) => {
         user.token = token;
 
         await user.save();
-        user = await User.findOne({ email }).select(['-_id', '-__v', '-password']).exec()
+        user = await User.findOne({ email }).select(['-password', '-__v']).exec();
         res.status(200).json({ success: true, message: "User logged in successfully", user });
     } catch (error) {
         res.status(500).json({ success: false, message: 'Google Login Error', error: error instanceof Error ? error.message : 'Internal Error' });
@@ -141,7 +140,7 @@ export const logout = async (req: Request, res: Response) => {
 
 export const getAllUsers = async (req: Request, res: Response) => {
     try {
-        const users = await User.find()
+        const users = await User.find().select(['-password', '-__v']);
         if (users.length === 0) {
             return res.status(404).json({ success: false, message: "Users not found" });
         }
@@ -154,12 +153,12 @@ export const getAllUsers = async (req: Request, res: Response) => {
 export const getUser = async (req: CustomRequest, res: Response) => {
     try {
 
-        let user = await User.findOne({ email: req.email }).populate('fundraisings').exec();
+        let user = await User.findOne({ email: req.email }).select(['-password', '-__v']).populate('fundraisings').exec();
         if (!user) {
             return res.status(404).json({ success: false, message: "User not found" });
         }
 
-        res.status(200).json(user);
+        res.status(200).json({ success: true, user });
     } catch (error) {
         res.status(500).json({ success: false, message: 'Failed to fetch user', error: error instanceof Error ? error.message : 'Internal Error' });
     }
@@ -174,8 +173,15 @@ export const updateUser = async (req: CustomRequest, res: Response) => {
             return res.status(400).json({ success: false, message: errorMessage });
         }
 
-        const hashedPassword = await bcrypt.hash(result.data.password ?? '', 10);
-        const user = await User.findOneAndUpdate({ email: req.email }, { ...result.data, password: hashedPassword }, { new: true }).select(['-_id', '-__v', '-password']).exec();
+        const hashedPassword = result.data.password ? await bcrypt.hash(result.data.password, 10) : undefined;
+        const updateData = { ...result.data };
+        if (hashedPassword) {
+            updateData.password = hashedPassword;
+        } else {
+            delete updateData.password;
+        }
+
+        const user = await User.findOneAndUpdate({ email: req.email }, updateData, { new: true }).select(['-password', '-__v']).exec();
 
         if (!user) {
             return res.status(404).json({ success: false, message: "User not found" });
